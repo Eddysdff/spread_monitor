@@ -1,4 +1,4 @@
-// 弹窗主逻辑
+// 侧边栏主逻辑（与popup.js相同，但适配侧边栏）
 let dataCollector;
 let spreadAnalyzer;
 let updateInterval;

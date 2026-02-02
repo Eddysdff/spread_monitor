@@ -15,8 +15,13 @@ chrome.runtime.onStartup.addListener(() => {
 
 function initialize() {
   // 这里可以初始化数据采集器等
-  // 由于service worker的限制，主要逻辑在popup中
+  // 由于service worker的限制，主要逻辑在sidepanel中
 }
+
+// 点击插件图标时打开侧边栏
+chrome.action.onClicked.addListener((tab) => {
+  chrome.sidePanel.open({ windowId: tab.windowId });
+});
 
 // 定时任务：每分钟更新一次数据
 chrome.alarms.create('updatePrices', {
