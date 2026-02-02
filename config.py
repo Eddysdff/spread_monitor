@@ -57,12 +57,10 @@ DEX_CONFIG = {
         }
     },
     'variational': {
-        # 根据官方文档：https://docs.variational.io/technical-documentation/api
-        # Read-Only API Base URL
-        'base_url': 'https://omni-client-api.prod.ap-northeast-1.variational.io',
-        # Variational使用单一端点获取所有市场数据
-        'stats_endpoint': '/metadata/stats',
-        # 市场映射（用于从listings中查找对应的ticker）
+        # 使用新的quotes API端点（推荐方式）
+        'base_url': 'https://omni.variational.io',
+        'quotes_endpoint': '/api/quotes/simple',  # 获取报价的API端点
+        # 市场映射
         'markets': {
             'BTC': 'BTC',
             'ETH': 'ETH',
@@ -74,12 +72,18 @@ DEX_CONFIG = {
         },
         # API特定配置
         'api_config': {
-            'method': 'GET',
-            'headers': {},
+            'method': 'POST',
+            'headers': {
+                'content-type': 'application/json',
+                'origin': 'https://omni.variational.io',
+                'referer': 'https://omni.variational.io/markets',
+            },
             'params': {},
-            # Variational API返回quotes，可以选择不同size的报价
-            # size_1k, size_100k, size_1m (majors only)
-            'quote_size': 'size_100k',  # 使用100k的报价作为参考
+            # quotes API 配置
+            'quote_qty': '0.001',  # 报价数量
+            'settlement_asset': 'USDC',  # 结算资产
+            'instrument_type': 'perpetual_future',  # 合约类型
+            'funding_interval_s': 3600,  # 资金费率间隔（秒）
         }
     }
 }

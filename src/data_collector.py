@@ -9,6 +9,14 @@ from typing import Dict, Optional, List, Tuple
 from datetime import datetime
 import config
 
+# 尝试导入 curl_cffi（用于绕过 Cloudflare 保护）
+try:
+    from curl_cffi import requests as curl_requests
+    CURL_CFFI_AVAILABLE = True
+except ImportError:
+    CURL_CFFI_AVAILABLE = False
+    logger.warning("curl_cffi 未安装，variational API 可能无法绕过 Cloudflare 保护。建议安装: pip install curl-cffi")
+
 logger = logging.getLogger(__name__)
 
 
@@ -64,13 +72,25 @@ class DataCollector:
             
             url = base_url + market_path
             
-            async with self.session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return self._parse_orderbook(dex, symbol, data)
-                else:
-                    logger.error(f"获取订单簿失败: {dex} - {symbol}, status={response.status}")
-                    return None
+            # 检查session是否已初始化
+            if self.session is None:
+                logger.error(f"Session未初始化: {dex} - {symbol}")
+                return None
+            
+            try:
+                async with self.session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return self._parse_orderbook(dex, symbol, data)
+                    else:
+                        logger.error(f"获取订单簿失败: {dex} - {symbol}, status={response.status}")
+                        return None
+            except asyncio.CancelledError:
+                logger.warning(f"请求被取消: {dex} - {symbol}")
+                return None
+            except asyncio.TimeoutError:
+                logger.warning(f"请求超时: {dex} - {symbol}")
+                return None
         except Exception as e:
             logger.error(f"获取订单簿异常: {dex} - {symbol}, error={str(e)}")
             return None
@@ -78,7 +98,8 @@ class DataCollector:
     async def _fetch_variational_orderbook(self, symbol: str) -> Optional[Dict]:
         """
         获取Variational订单簿数据
-        Variational使用单一端点 /metadata/stats 返回所有市场数据
+        使用quotes/simple API端点：https://omni.variational.io/api/quotes/simple
+        使用 curl_cffi 来绕过 Cloudflare 保护
         
         Args:
             symbol: 币种符号
@@ -88,58 +109,103 @@ class DataCollector:
         """
         try:
             dex_config = config.DEX_CONFIG.get('variational')
-            url = dex_config['base_url'] + dex_config['stats_endpoint']
+            underlying = dex_config['markets'].get(symbol)
+            if not underlying:
+                logger.error(f"Variational市场映射不存在: {symbol}")
+                return None
             
-            async with self.session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    # 从listings数组中查找对应的ticker
-                    ticker = dex_config['markets'].get(symbol)
-                    if not ticker:
-                        logger.error(f"Variational市场映射不存在: {symbol}")
-                        return None
-                    
-                    listings = data.get('listings', [])
-                    listing = None
-                    for item in listings:
-                        if item.get('ticker') == ticker:
-                            listing = item
-                            break
-                    
-                    if not listing:
-                        logger.warning(f"Variational未找到市场: {symbol} (ticker: {ticker})")
-                        return None
-                    
-                    # 从quotes中提取bid/ask价格
-                    quotes = listing.get('quotes', {})
-                    quote_size = dex_config['api_config'].get('quote_size', 'size_100k')
-                    quote = quotes.get(quote_size)
-                    
-                    if not quote:
-                        logger.warning(f"Variational未找到报价: {symbol}, size: {quote_size}")
-                        return None
-                    
-                    bid_price = float(quote.get('bid', 0))
-                    ask_price = float(quote.get('ask', 0))
-                    
-                    if bid_price == 0 or ask_price == 0:
-                        logger.warning(f"Variational报价无效: {symbol}, bid={bid_price}, ask={ask_price}")
-                        return None
-                    
-                    # 构造标准化的订单簿格式
-                    # 使用单一价格点作为订单簿（因为Variational只提供特定size的报价）
-                    return {
-                        'dex': 'variational',
-                        'symbol': symbol,
-                        'bids': [[bid_price, 1.0]],  # 使用1.0作为默认size
-                        'asks': [[ask_price, 1.0]],
-                        'timestamp': datetime.now().isoformat(),
-                        'mark_price': float(listing.get('mark_price', 0)),
-                        'quote_size': quote_size,
+            # 构建quotes API URL
+            url = dex_config['base_url'] + dex_config['quotes_endpoint']
+            
+            # 构建请求体
+            api_config = dex_config['api_config']
+            payload = {
+                'instrument': {
+                    'underlying': underlying,
+                    'instrument_type': api_config.get('instrument_type', 'perpetual_future'),
+                    'settlement_asset': api_config.get('settlement_asset', 'USDC'),
+                    'funding_interval_s': api_config.get('funding_interval_s', 3600),
+                },
+                'qty': api_config.get('quote_qty', '0.001'),
+            }
+            
+            # 使用 curl_cffi 来绕过 Cloudflare 保护（参考 variational.py）
+            if CURL_CFFI_AVAILABLE:
+                # 在异步环境中运行同步的 curl_cffi 请求
+                def _fetch_with_curl_cffi():
+                    session = curl_requests.Session(impersonate="chrome110")
+                    headers = {
+                        "content-type": "application/json",
+                        "origin": "https://omni.variational.io",
+                        "referer": "https://omni.variational.io/markets"
                     }
-                else:
-                    logger.error(f"获取Variational数据失败: {symbol}, status={response.status}")
+                    session.headers.update(headers)
+                    # 合并配置中的headers
+                    session.headers.update(api_config.get('headers', {}))
+                    
+                    response = session.post(url, json=payload, timeout=10)
+                    if response.status_code == 200:
+                        return response.json()
+                    else:
+                        raise Exception(f"HTTP {response.status_code}: {response.text[:200]}")
+                
+                # 在线程池中运行同步请求
+                data = await asyncio.to_thread(_fetch_with_curl_cffi)
+            else:
+                # 回退到 aiohttp（可能无法绕过 Cloudflare）
+                if self.session is None:
+                    logger.error(f"Session未初始化: variational - {symbol}")
                     return None
+                
+                headers = {
+                    'Content-Type': 'application/json',
+                    'Origin': 'https://omni.variational.io',
+                    'Referer': 'https://omni.variational.io/markets',
+                }
+                headers.update(api_config.get('headers', {}))
+                
+                async with self.session.post(
+                    url, 
+                    json=payload, 
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        logger.error(f"获取Variational数据失败: {symbol}, status={response.status}, error={error_text[:200]}")
+                        return None
+                    data = await response.json()
+            
+            # 处理返回数据：可能是数组或单个对象
+            if isinstance(data, list) and len(data) > 0:
+                data = data[0]
+            
+            bid_price = float(data.get('bid', 0))
+            ask_price = float(data.get('ask', 0))
+            
+            if bid_price == 0 or ask_price == 0:
+                logger.warning(f"Variational报价无效: {symbol}, bid={bid_price}, ask={ask_price}")
+                return None
+            
+            # 计算中间价
+            mid_price = (bid_price + ask_price) / 2
+            
+            # 构造标准化的订单簿格式
+            return {
+                'dex': 'variational',
+                'symbol': symbol,
+                'bids': [[bid_price, 1.0]],  # 使用1.0作为默认size
+                'asks': [[ask_price, 1.0]],
+                'timestamp': datetime.now().isoformat(),
+                'mark_price': mid_price,
+                'quote_qty': api_config.get('quote_qty', '0.001'),
+            }
+        except asyncio.CancelledError:
+            logger.warning(f"Variational请求被取消: {symbol}")
+            return None
+        except asyncio.TimeoutError:
+            logger.warning(f"Variational请求超时: {symbol}")
+            return None
         except Exception as e:
             logger.error(f"获取Variational订单簿异常: {symbol}, error={str(e)}")
             return None

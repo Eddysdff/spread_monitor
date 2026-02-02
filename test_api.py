@@ -5,7 +5,22 @@
 import asyncio
 import aiohttp
 import json
-from config import DEX_CONFIG, BINANCE_CONFIG
+import sys
+import io
+from config import DEX_CONFIG
+
+# 尝试导入 curl_cffi（用于绕过 Cloudflare 保护）
+try:
+    from curl_cffi import requests as curl_requests
+    CURL_CFFI_AVAILABLE = True
+except ImportError:
+    CURL_CFFI_AVAILABLE = False
+    print("⚠ curl_cffi 未安装，variational API 可能无法绕过 Cloudflare 保护。建议安装: pip install curl-cffi")
+
+# 修复Windows控制台编码问题
+if sys.platform == 'win32':
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 
 async def test_01xyz():
@@ -34,85 +49,6 @@ async def test_01xyz():
                 print(f"✗ 异常: {str(e)}")
 
 
-async def test_binance():
-    """测试币安API"""
-    print("\n=== 测试币安 API ===")
-    
-    # 币安API：不带参数获取所有交易对价格
-    url = BINANCE_CONFIG['base_url'] + BINANCE_CONFIG['ticker_endpoint']
-    
-    print(f"\n获取所有交易对价格: {url}")
-    print("  (不带参数，返回所有交易对的数组)")
-    
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    print(f"✓ 成功获取数据")
-                    print(f"  数据格式: {type(data)}")
-                    
-                    if isinstance(data, list):
-                        print(f"  返回格式: 数组（包含 {len(data)} 个交易对）")
-                        
-                        # 查找我们需要的交易对
-                        prices = {}
-                        for item in data:
-                            symbol = item.get('symbol')
-                            price_str = item.get('price')
-                            if symbol and price_str:
-                                try:
-                                    prices[symbol] = float(price_str)
-                                except ValueError:
-                                    continue
-                        
-                        # 测试每个币种
-                        for symbol in ['BTC', 'ETH', 'SOL']:
-                            binance_symbol = BINANCE_CONFIG['symbols'].get(symbol)
-                            if not binance_symbol:
-                                print(f"\n  {symbol}: ✗ 配置中无对应交易对")
-                                continue
-                            
-                            price = prices.get(binance_symbol)
-                            if price:
-                                print(f"\n  {symbol} ({binance_symbol}): ✓ 价格 = {price}")
-                            else:
-                                print(f"\n  {symbol} ({binance_symbol}): ✗ 未找到")
-                        
-                        # 显示前几个交易对示例
-                        print(f"\n  前5个交易对示例:")
-                        for i, item in enumerate(data[:5]):
-                            print(f"    {i+1}. {item.get('symbol')}: {item.get('price')}")
-                    else:
-                        print(f"  ✗ 返回格式异常: 期望数组，得到 {type(data)}")
-                        print(f"  数据: {data[:200] if isinstance(data, str) else data}")
-                else:
-                    print(f"✗ HTTP错误: {response.status}")
-                    error_text = await response.text()
-                    print(f"  错误信息: {error_text[:200]}")
-        except Exception as e:
-            print(f"✗ 异常: {str(e)}")
-            import traceback
-            print(f"  详细错误: {traceback.format_exc()[:500]}")
-    async with aiohttp.ClientSession() as session:
-        for symbol, binance_symbol in BINANCE_CONFIG['symbols'].items():
-            url = BINANCE_CONFIG['base_url'] + BINANCE_CONFIG['ticker_endpoint']
-            params = {'symbol': binance_symbol}
-            print(f"\n测试 {symbol} ({binance_symbol}): {url}")
-            print(f"  参数: {params}")
-            try:
-                async with session.get(url, params=params, timeout=aiohttp.ClientTimeout(total=10)) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        print(f"✓ 成功获取价格: {data.get('price')}")
-                    else:
-                        error_text = await response.text()
-                        print(f"✗ 请求失败: status={response.status}")
-                        print(f"  错误信息: {error_text[:200]}")
-            except Exception as e:
-                print(f"✗ 异常: {str(e)}")
-                import traceback
-                print(f"  详细错误: {traceback.format_exc()[:300]}")
 
 
 async def test_nado():
@@ -177,52 +113,86 @@ async def test_variational():
         return
     
     async with aiohttp.ClientSession() as session:
-        # Variational使用单一端点获取所有市场数据
+        # Variational使用quotes/simple API端点
         base_url = var_config['base_url']
-        endpoint = var_config['stats_endpoint']
+        endpoint = var_config['quotes_endpoint']
         url = f"{base_url}{endpoint}"
+        api_config = var_config['api_config']
         
-        print(f"\n获取所有市场数据: {url}")
-        try:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    print(f"✓ 成功获取数据")
-                    print(f"  数据格式: {type(data)}")
-                    
-                    if isinstance(data, dict) and 'listings' in data:
-                        listings = data['listings']
-                        print(f"  市场数量: {len(listings)}")
+        # 测试每个币种
+        for symbol, underlying in var_config['markets'].items():
+            print(f"\n测试 {symbol} (underlying: {underlying})")
+            print(f"  URL: {url}")
+            
+            # 构建请求体
+            payload = {
+                'instrument': {
+                    'underlying': underlying,
+                    'instrument_type': api_config.get('instrument_type', 'perpetual_future'),
+                    'settlement_asset': api_config.get('settlement_asset', 'USDC'),
+                    'funding_interval_s': api_config.get('funding_interval_s', 3600),
+                },
+                'qty': api_config.get('quote_qty', '0.001'),
+            }
+            
+            # 添加完整的浏览器headers以绕过Cloudflare保护
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'application/json, text/plain, */*',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Content-Type': 'application/json',
+                'Origin': 'https://omni.variational.io',
+                'Referer': 'https://omni.variational.io/markets',
+                'Connection': 'keep-alive',
+                'Sec-Fetch-Dest': 'empty',
+                'Sec-Fetch-Mode': 'cors',
+                'Sec-Fetch-Site': 'same-origin',
+            }
+            # 合并配置中的headers
+            headers.update(api_config.get('headers', {}))
+            
+            try:
+                async with session.post(
+                    url, 
+                    json=payload, 
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=15)
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        print(f"✓ 成功获取数据")
+                        print(f"  数据格式: {type(data)}")
                         
-                        # 检查每个币种
-                        for symbol, ticker in var_config['markets'].items():
-                            listing = None
-                            for item in listings:
-                                if item.get('ticker') == ticker:
-                                    listing = item
-                                    break
-                            
-                            if listing:
-                                print(f"\n  {symbol} (ticker: {ticker}):")
-                                print(f"    标记价格: {listing.get('mark_price')}")
-                                quotes = listing.get('quotes', {})
-                                if quotes:
-                                    quote_size = var_config['api_config'].get('quote_size', 'size_100k')
-                                    quote = quotes.get(quote_size)
-                                    if quote:
-                                        print(f"    {quote_size} bid: {quote.get('bid')}")
-                                        print(f"    {quote_size} ask: {quote.get('ask')}")
+                        # 处理返回数据：可能是数组或单个对象
+                        if isinstance(data, list) and len(data) > 0:
+                            data = data[0]
+                        
+                        if isinstance(data, dict):
+                            bid = data.get('bid')
+                            ask = data.get('ask')
+                            if bid and ask:
+                                print(f"  Bid: {bid}")
+                                print(f"  Ask: {ask}")
+                                mid = (float(bid) + float(ask)) / 2
+                                spread = float(ask) - float(bid)
+                                spread_pct = (spread / mid) * 100
+                                print(f"  Mid: {mid:.2f}")
+                                print(f"  Spread: {spread:.2f} ({spread_pct:.4f}%)")
                             else:
-                                print(f"  {symbol} (ticker: {ticker}): ✗ 未找到")
-                    
-                    data_str = json.dumps(data, indent=2)[:800]
-                    print(f"\n  数据预览:\n{data_str}...")
-                else:
-                    error_text = await response.text()
-                    print(f"✗ 请求失败: status={response.status}")
-                    print(f"  错误信息: {error_text[:200]}")
-        except Exception as e:
-            print(f"✗ 异常: {str(e)}")
+                                print(f"  ✗ 未找到bid/ask")
+                                print(f"  数据键: {list(data.keys())}")
+                        
+                        data_str = json.dumps(data, indent=2, ensure_ascii=False)[:500]
+                        print(f"\n  数据预览:\n{data_str}...")
+                    else:
+                        error_text = await response.text()
+                        print(f"✗ 请求失败: status={response.status}")
+                        print(f"  错误信息: {error_text[:200]}")
+            except Exception as e:
+                print(f"✗ 异常: {str(e)}")
+                import traceback
+                print(f"  详细错误: {traceback.format_exc()[:300]}")
 
 
 async def main():
@@ -232,7 +202,6 @@ async def main():
     print("=" * 60)
     
     await test_01xyz()
-    await test_binance()
     await test_nado()
     await test_variational()
     
