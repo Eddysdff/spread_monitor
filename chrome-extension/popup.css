@@ -119,6 +119,11 @@ body {
     font-weight: 600;
 }
 
+.signal-close {
+    color: #ff9800;
+    font-weight: 600;
+}
+
 .signal-none {
     color: #888;
     font-style: italic;

@@ -197,18 +197,48 @@ function updateSignalTable(prices) {
       const signal = opportunity.signal;
       
       if (signal) {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-          <td>${dex1} vs ${dex2}</td>
-          <td>${symbol}</td>
-          <td class="signal-open">开仓</td>
-          <td class="operation">
-            <div class="operation-high">${signal.high_dex} 做空 @ ${signal.high_price.toFixed(2)}</div>
-            <div class="operation-low">${signal.low_dex} 做多 @ ${signal.low_price.toFixed(2)}</div>
-          </td>
-          <td>${opportunity.net_profit.toFixed(4)}</td>
-        `;
-        tbody.appendChild(row);
+        const action = signal.action;
+        let row;
+        
+        if (action === 'OPEN') {
+          // 开仓信号
+          row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${dex1} vs ${dex2}</td>
+            <td>${symbol}</td>
+            <td class="signal-open">开仓</td>
+            <td class="operation">
+              <div class="operation-high">${signal.high_dex} 做空 @ ${signal.high_price.toFixed(2)}</div>
+              <div class="operation-low">${signal.low_dex} 做多 @ ${signal.low_price.toFixed(2)}</div>
+            </td>
+            <td>${opportunity.net_profit.toFixed(4)}</td>
+          `;
+        } else if (action === 'CLOSE') {
+          // 平仓信号
+          let reason;
+          if (signal.close_threshold !== undefined) {
+            reason = `价差已收敛 (当前:${signal.current_spread.toFixed(4)} <= 阈值:${signal.close_threshold.toFixed(4)})`;
+          } else {
+            reason = signal.reason || '价差收敛';
+          }
+          
+          row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${dex1} vs ${dex2}</td>
+            <td>${symbol}</td>
+            <td class="signal-close">平仓</td>
+            <td class="operation">
+              <div class="operation-high">${signal.high_dex} 平多 @ ${price1Data.price.toFixed(2)}</div>
+              <div class="operation-low">${signal.low_dex} 平空 @ ${price2Data.price.toFixed(2)}</div>
+              <div style="font-size: 10px; color: #888; margin-top: 4px;">原因: ${reason}</div>
+            </td>
+            <td>${signal.current_spread.toFixed(4)}</td>
+          `;
+        }
+        
+        if (row) {
+          tbody.appendChild(row);
+        }
       } else {
         const debug = opportunity.debug_info || {};
         const reasons = [];
