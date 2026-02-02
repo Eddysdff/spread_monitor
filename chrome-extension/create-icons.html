@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>生成插件图标</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        canvas {
+            border: 1px solid #ddd;
+            margin: 10px;
+            display: block;
+        }
+        button {
+            padding: 10px 20px;
+            background: #4fc3f7;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #29b6f6;
+        }
+        .instructions {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>生成插件图标</h1>
+        <div class="instructions">
+            <p><strong>使用说明：</strong></p>
+            <ol>
+                <li>点击下面的按钮生成图标</li>
+                <li>右键点击每个画布，选择"图片另存为"</li>
+                <li>保存到 <code>chrome-extension/assets/icons/</code> 文件夹</li>
+                <li>文件名分别为：icon16.png, icon48.png, icon128.png</li>
+            </ol>
+        </div>
+        
+        <div>
+            <h3>16x16 图标</h3>
+            <canvas id="icon16" width="16" height="16"></canvas>
+            <button onclick="downloadIcon('icon16', 16)">下载 icon16.png</button>
+        </div>
+        
+        <div>
+            <h3>48x48 图标</h3>
+            <canvas id="icon48" width="48" height="48"></canvas>
+            <button onclick="downloadIcon('icon48', 48)">下载 icon48.png</button>
+        </div>
+        
+        <div>
+            <h3>128x128 图标</h3>
+            <canvas id="icon128" width="128" height="128"></canvas>
+            <button onclick="downloadIcon('icon128', 128)">下载 icon128.png</button>
+        </div>
+    </div>
+
+    <script>
+        function drawIcon(canvasId, size) {
+            const canvas = document.getElementById(canvasId);
+            const ctx = canvas.getContext('2d');
+            
+            // 清空画布
+            ctx.clearRect(0, 0, size, size);
+            
+            // 绘制背景（渐变蓝色）
+            const gradient = ctx.createLinearGradient(0, 0, size, size);
+            gradient.addColorStop(0, '#4fc3f7');
+            gradient.addColorStop(1, '#29b6f6');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, size, size);
+            
+            // 绘制文字 "$" 符号（代表套利/交易）
+            ctx.fillStyle = 'white';
+            ctx.font = `bold ${size * 0.6}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('$', size / 2, size / 2);
+            
+            // 绘制边框
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.lineWidth = size * 0.05;
+            ctx.strokeRect(size * 0.1, size * 0.1, size * 0.8, size * 0.8);
+        }
+        
+        function downloadIcon(canvasId, size) {
+            const canvas = document.getElementById(canvasId);
+            const link = document.createElement('a');
+            link.download = `icon${size}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+        
+        // 初始化绘制所有图标
+        window.onload = function() {
+            drawIcon('icon16', 16);
+            drawIcon('icon48', 48);
+            drawIcon('icon128', 128);
+        };
+    </script>
+</body>
+</html>

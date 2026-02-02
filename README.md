@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-这是一个用于监控多个 PerpDEX（01.xyz、nado、variational）的 BTC、ETH、SOL 实时订单簿价格，通过价差分析和多空对冲策略，实现最低磨损获取交易积分的监控系统。
+这是一个用于监控多个 PerpDEX（01.xyz、nado、variational）的 BTC、ETH、SOL 实时订单簿价格，通过价差分析和多空对冲策略，实现最低磨损获取交易积分的监控系统。并已完成chrome插件开发，在插件中实现全功能。
 
 ## 核心功能
 
@@ -39,6 +39,9 @@ pip install -r requirements.txt
 ```bash
 python -m src.monitor
 ```
+
+## 插件使用
+chrome插件开发者模式下，直接加载 chrome-extension 文件夹即可使用。
 
 ## 配置说明
 

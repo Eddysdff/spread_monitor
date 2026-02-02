@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "PerpDEX 套利监控",
+  "version": "1.0.0",
+  "description": "监控多个PerpDEX的价差，生成套利信号",
+  "permissions": [
+    "storage",
+    "alarms",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://zo-mainnet.n1.xyz/*",
+    "https://gateway.prod.nado.xyz/*",
+    "https://omni-client-api.prod.ap-northeast-1.variational.io/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "options_page": "options.html"
+}
