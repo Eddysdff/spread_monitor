@@ -210,6 +210,7 @@ class SpreadAnalyzer:
             price2: DEX2价格
             amount: 交易金额
             use_maker: 是否使用maker订单
+            position: 当前持仓（Position对象，可选）
             
         Returns:
             套利机会分析结果
@@ -291,7 +292,7 @@ class SpreadAnalyzer:
         has_convergence_data: bool = False
     ) -> Optional[Dict]:
         """
-        生成交易信号
+        生成交易信号（简化版：基于收敛区间阈值）
         
         Args:
             spread_analysis: 价差分析结果
@@ -301,34 +302,79 @@ class SpreadAnalyzer:
             has_convergence_data: 是否有收敛区间数据
             
         Returns:
-            交易信号或None
+            交易信号：'OPEN' 或 'CLOSE' 或 None
         """
-        # 放宽信号生成条件：
-        # 1. 如果有收敛区间数据：需要超出收敛区间且有利可图
-        # 2. 如果没有收敛区间数据：只要价差在阈值范围内且有利可图即可
+        convergence = spread_analysis.get('convergence')
+        current_spread = spread_analysis['spread']
         
-        if has_convergence_data:
-            # 有历史数据：需要超出收敛区间
-            condition = beyond_convergence and is_profitable and within_threshold
+        # 如果有收敛区间数据，使用基于收敛区间的阈值
+        if convergence:
+            mean_spread = convergence['mean']
+            upper_spread = convergence['upper']
+            
+            # 开仓阈值：收敛区间上界 × 倍数
+            open_threshold = upper_spread * config.SPREAD_CONFIG['open_spread_multiplier']
+            
+            # 平仓阈值：收敛区间均值 × 倍数
+            close_threshold = mean_spread * config.SPREAD_CONFIG['close_spread_multiplier']
+            
+            # 平仓信号：当前价差 <= 平仓阈值
+            if current_spread <= close_threshold:
+                return {
+                    'action': 'CLOSE',
+                    'high_dex': spread_analysis['high_dex'],
+                    'high_side': 'LONG',  # 平仓时反向操作
+                    'low_dex': spread_analysis['low_dex'],
+                    'low_side': 'SHORT',  # 平仓时反向操作
+                    'current_spread': current_spread,
+                    'close_threshold': close_threshold,
+                    'convergence_mean': mean_spread,
+                }
+            
+            # 开仓信号：当前价差 >= 开仓阈值 且 有利可图 且 在阈值范围内
+            if current_spread >= open_threshold and is_profitable and within_threshold:
+                return {
+                    'action': 'OPEN',
+                    'high_dex': spread_analysis['high_dex'],
+                    'high_side': 'SHORT',
+                    'high_price': spread_analysis['high_price'],
+                    'low_dex': spread_analysis['low_dex'],
+                    'low_side': 'LONG',
+                    'low_price': spread_analysis['low_price'],
+                    'spread': current_spread,
+                    'spread_percentage': spread_analysis['spread_percentage'],
+                    'open_threshold': open_threshold,
+                }
         else:
-            # 没有历史数据：只要价差在阈值范围内且有利可图
-            condition = is_profitable and within_threshold
-        
-        if condition:
-            return {
-                'action': 'OPEN',
-                'high_dex': spread_analysis['high_dex'],
-                'high_side': 'SHORT',
-                'high_price': spread_analysis['high_price'],
-                'low_dex': spread_analysis['low_dex'],
-                'low_side': 'LONG',
-                'low_price': spread_analysis['low_price'],
-                'spread': spread_analysis['spread'],
-                'spread_percentage': spread_analysis['spread_percentage'],
-            }
-        
-        # 平仓信号：价差收敛到正常区间（如果有持仓的话）
-        # 这里需要结合持仓状态判断，暂时返回None
-        # 实际使用时需要传入持仓信息
+            # 没有收敛区间数据：使用简单的百分比阈值
+            spread_pct = spread_analysis['spread_percentage']
+            min_threshold = config.SPREAD_CONFIG['min_spread_threshold']
+            max_threshold = config.SPREAD_CONFIG['max_spread_threshold']
+            
+            # 平仓信号：价差过小（小于最小阈值）
+            if spread_pct < min_threshold:
+                return {
+                    'action': 'CLOSE',
+                    'high_dex': spread_analysis['high_dex'],
+                    'high_side': 'LONG',
+                    'low_dex': spread_analysis['low_dex'],
+                    'low_side': 'SHORT',
+                    'current_spread': current_spread,
+                    'reason': '价差过小',
+                }
+            
+            # 开仓信号：价差在阈值范围内且有利可图
+            if min_threshold <= spread_pct <= max_threshold and is_profitable:
+                return {
+                    'action': 'OPEN',
+                    'high_dex': spread_analysis['high_dex'],
+                    'high_side': 'SHORT',
+                    'high_price': spread_analysis['high_price'],
+                    'low_dex': spread_analysis['low_dex'],
+                    'low_side': 'LONG',
+                    'low_price': spread_analysis['low_price'],
+                    'spread': current_spread,
+                    'spread_percentage': spread_pct,
+                }
         
         return None

@@ -107,6 +107,9 @@ SPREAD_CONFIG = {
     'convergence_window_hours': 24,  # 收敛区间计算窗口（小时）
     'min_spread_threshold': 0.0005,  # 最小价差阈值（0.05%）
     'max_spread_threshold': 0.01,    # 最大价差阈值（1%），超过则不开仓
+    # 开仓/平仓阈值（基于收敛区间）
+    'open_spread_multiplier': 1.5,   # 开仓阈值：收敛区间上界 × 1.5
+    'close_spread_multiplier': 0.8,  # 平仓阈值：收敛区间均值 × 0.8
 }
 
 # 交易信号配置

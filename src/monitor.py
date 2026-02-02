@@ -229,6 +229,21 @@ class Monitor:
                             op_str,
                             f"{profit:.4f}",
                         )
+                    elif action == 'CLOSE':
+                        # 平仓信号
+                        op_str = f"{signal['high_dex']} 平多 @ {price1_data['price']:.2f}\n"
+                        op_str += f"{signal['low_dex']} 平空 @ {price2_data['price']:.2f}"
+                        if 'close_threshold' in signal:
+                            reason = f"价差已收敛 (当前:{signal['current_spread']:.4f} <= 阈值:{signal['close_threshold']:.4f})"
+                        else:
+                            reason = signal.get('reason', '价差收敛')
+                        table.add_row(
+                            f"{dex1} vs {dex2}",
+                            symbol,
+                            "[bold yellow]平仓[/bold yellow]",
+                            f"{op_str}\n原因: {reason}",
+                            f"{signal['current_spread']:.4f}",
+                        )
                 else:
                     # 添加调试信息：显示为什么没有信号
                     debug = opportunity.get('debug_info', {})
