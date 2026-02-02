@@ -1,0 +1,9 @@
+request url
+BTC
+https://zo-mainnet.n1.xyz/market/0/orderbook
+ETH
+https://zo-mainnet.n1.xyz/market/1/orderbook
+SOL
+https://zo-mainnet.n1.xyz/market/2/orderbook
+hype
+https://zo-mainnet.n1.xyz/market/3/orderbook
