@@ -1,7 +1,3 @@
-/**
- * 数据采集模块 - 从 data_collector.py 移植
- * 负责从各个DEX获取价格数据
- */
 class DataCollector {
   constructor() {
     this.priceCache = {};
@@ -45,9 +41,9 @@ class DataCollector {
 
   /**
    * 获取订单簿数据
-   * @param {string} dex - DEX名称
-   * @param {string} symbol - 币种符号
-   * @returns {Object|null} 订单簿数据
+   * @param {string} dex 
+   * @param {string} symbol 
+   * @returns {Object|null} 
    */
   async fetchOrderbook(dex, symbol) {
     try {
@@ -143,7 +139,7 @@ class DataCollector {
 
       let data = await response.json();
 
-      // 处理返回数据：可能是数组或单个对象
+      // 处理返回数据
       if (Array.isArray(data) && data.length > 0) {
         data = data[0];
       }

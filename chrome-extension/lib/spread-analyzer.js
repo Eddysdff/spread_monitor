@@ -1,18 +1,10 @@
-/**
- * 价差分析模块 - 从 spread_analyzer.py 移植
- * 负责计算价差、收敛区间和生成交易信号
- */
 class SpreadAnalyzer {
   constructor() {
-    // 存储历史价差数据: { "dex1|dex2|symbol": [spread1, spread2, ...] }
     this.spreadHistory = {};
-    // 存储历史价格数据: { "dex|symbol": [{timestamp, price}, ...] }
     this.priceHistory = {};
   }
 
-  /**
-   * 从 chrome.storage 加载历史数据
-   */
+
   async loadHistory() {
     try {
       const result = await chrome.storage.local.get(['spreadHistory', 'priceHistory']);
@@ -28,9 +20,7 @@ class SpreadAnalyzer {
     }
   }
 
-  /**
-   * 保存历史数据到 chrome.storage
-   */
+ 
   async saveHistory() {
     try {
       await chrome.storage.local.set({
@@ -78,7 +68,7 @@ class SpreadAnalyzer {
     }
     this.spreadHistory[key].push(spread);
 
-    // 只保留最近24小时的数据（假设每秒更新一次，约86400条）
+    // 只保留最近24小时的数据
     const maxHistory = CONFIG.SPREAD_CONFIG.convergence_window_hours * 3600;
     if (this.spreadHistory[key].length > maxHistory) {
       this.spreadHistory[key] = this.spreadHistory[key].slice(-maxHistory);
